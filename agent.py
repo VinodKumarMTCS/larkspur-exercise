@@ -117,14 +117,21 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
                 "type": "object",
                 "properties": {
                     "flight_no": {"type": "string"},
-                    "date": {"type": "string", "description": "MM/DD/YYYY"},
+                    "date": {"type": "string", "description": "Local flight date in ISO format YYYY-MM-DD, e.g. 2025-05-08. Copy it from the booking's segment date."},
                 },
                 "required": ["flight_no", "date"],
             },
         },
         {
             "name": "search_alternatives",
-            "description": "search",
+            "description": (
+                "Find ranked rebooking options for the disrupted segment on a booking. "
+                "Call it after lookup_booking and check_policy confirm the customer is "
+                "owed a rebooking, and before offering or holding any flight; never "
+                "invent flights. Needs only the pnr. Returns options, each with an "
+                "option_id (pass it to hold_seat), flights, date, departure/arrival "
+                "times, delay, seats available and fare difference."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {"pnr": {"type": "string"}},
