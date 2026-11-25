@@ -13,4 +13,4 @@ decides in the moment who does what.
 
 - Vinod Kumar
 - 
-- <Name>
+- Ipshita Chakraborty
