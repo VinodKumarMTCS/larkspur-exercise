@@ -14,3 +14,4 @@ decides in the moment who does what.
 - Vinod Kumar
 - Subrata Fouzder
 - Apurva Berthwal
+- Faisal Khwaja
