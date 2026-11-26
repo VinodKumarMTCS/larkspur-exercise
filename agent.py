@@ -19,7 +19,7 @@ from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
 
 MAX_TOOL_CALLS = 8  # Larkspur's own build capped the loop here; then a human takes over.
 
-TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
+TONE_ADDENDUM = "Rule for Reply: Generate short replies"                       # ✏️ Build 4, step 4.1, intelligence goal
 
 TRANSCRIPTS_PATH = Path(__file__).parent / "data" / "americas" / "transcripts_sample.jsonl"
 
@@ -463,8 +463,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
     ]
 
     response = client.messages.create(
-        model=MODEL, max_tokens=4096, 
-        system=[
+        model=MODEL, max_tokens=4096,system=[
             {
                 "type" : "text",
                 "text" : runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
@@ -478,8 +477,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
         messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results(response)})
         response = client.messages.create(
-            model=MODEL, max_tokens=4096, 
-            system=[
+            model=MODEL, max_tokens=4096,system=[
             {
                 "type" : "text",
                 "text" : runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
