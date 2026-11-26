@@ -9,7 +9,10 @@ Where you edit:   grep -n '✏' agent.py   (six marks, one per place)
 Steps and gates:  https://anthropicpartnerbasecamp.bts.com/
 """
 from __future__ import annotations
+import json
+from pathlib import Path
 from typing import Any, Dict, List
+from support.tools import check_policy as check_policy_fn
 from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
                      new_session, next_available_day, record_tool_result,
                      runtime_preamble)
@@ -17,7 +20,106 @@ from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
 MAX_TOOL_CALLS = 8  # Larkspur's own build capped the loop here; then a human takes over.
 
 TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
+
+TRANSCRIPTS_PATH = Path(__file__).parent / "data" / "americas" / "transcripts_sample.jsonl"
+
+
+def reopen_stats(intent_label: str = "") -> Dict[str, Any]:
+    """How often did a human-handled chat reopen within 72 hours, and why?
+    Reads the eight-transcript discovery sample. Optional filter on intent_label."""
+    rows = []
+    with open(TRANSCRIPTS_PATH, encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                rows.append(json.loads(line))
+    if intent_label:
+        rows = [r for r in rows if r.get("intent_label") == intent_label]
+    reopened = [r for r in rows if r.get("reopened_within_72h")]
+    by_intent: Dict[str, Dict[str, int]] = {}
+    for r in rows:
+        bucket = by_intent.setdefault(r.get("intent_label", "unknown"), {"chats": 0, "reopened": 0})
+        bucket["chats"] += 1
+        bucket["reopened"] += 1 if r.get("reopened_within_72h") else 0
+    return {
+        "chats": len(rows),
+        "reopened_within_72h": len(reopened),
+        "reopen_rate": round(len(reopened) / len(rows), 2) if rows else None,
+        "by_intent": by_intent,
+        "reopen_reasons": [{"transcript_id": r["transcript_id"], "intent_label": r.get("intent_label"),
+                            "reason": r.get("reopen_reason")} for r in reopened],
+        "caveat": "Sample of human-agent chats from the January storms discovery set, "
+                  "not all traffic. Treat the rate as anecdotal.",
+    }
+
+
+def care_entitlements(pnr: str, cause_code: str, delay_minutes: int, status: str,
+                      wait_minutes_for_alternative: Any = None) -> Dict[str, Any]:
+    """The care slice (meal, hotel, ground) of what check_policy resolves.
+    Same policy engine, narrower answer: nothing here is decided separately."""
+    full = check_policy_fn(pnr=pnr, cause_code=cause_code, delay_minutes=delay_minutes,
+                           status=status, wait_minutes_for_alternative=wait_minutes_for_alternative)
+    if "error" in full:
+        return full
+    return {
+        "policy_row_id": full.get("policy_row_id"),
+        "band": full.get("band"),
+        "care": full.get("care"),
+        "note": "Care only. Rebooking, refund, goodwill and escalation triggers are not "
+                "included; check_policy has those.",
+    }
+
+
 EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
+    {
+        "name": "care_entitlements",
+        "description": (
+            "Answer only the care question: what meal, hotel and ground-transport help is "
+            "this customer owed while they wait. Use it when the customer asks specifically "
+            "about meals, a hotel or transport, after get_flight_status has given you the "
+            "cause, delay and status. It reads the same policy as check_policy and returns "
+            "just the care part, with the policy_row_id to pass to issue_voucher. It does "
+            "not cover rebooking, refunds, goodwill or escalation triggers, so it never "
+            "replaces check_policy: when the customer's disruption has not been resolved "
+            "yet, call check_policy first."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pnr": {"type": "string"},
+                "cause_code": {"type": "string", "enum": ["WX", "ATC", "MX", "CREW", "SEC"],
+                               "description": "Cause from get_flight_status."},
+                "delay_minutes": {"type": "integer", "description": "Delay in minutes from get_flight_status; 0 if cancelled."},
+                "status": {"type": "string", "enum": ["ON_TIME", "DELAYED", "CANCELLED", "DIVERTED"],
+                           "description": "Status from get_flight_status."},
+                "wait_minutes_for_alternative": {"type": "integer",
+                                                 "description": "Optional. How long the customer waits for their new flight, if known."},
+            },
+            "required": ["pnr", "cause_code", "delay_minutes", "status"],
+        },
+    },
+    {
+        "name": "reopen_stats",
+        "description": (
+            "Report how often human-handled disruption chats were reopened by the customer "
+            "within 72 hours, and the recorded reasons (for example a confirmation email "
+            "that never arrived). Use it only when someone asks how often chats reopen or "
+            "why; it says nothing about this customer's booking or entitlements. Needs no "
+            "booking details. Optionally narrow it to one intent_label. Returns the chat "
+            "count, reopened count, rate, a per-intent breakdown and the reasons. The data "
+            "is a small sample of human-agent chats, so say that it is a sample, never "
+            "present the rate as a company-wide figure."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "intent_label": {
+                    "type": "string",
+                    "description": "Optional. Only count chats with this intent, e.g. rebook_after_cancellation. Omit for all chats.",
+                },
+            },
+            "required": [],
+        },
+    },
     {
         "name": "seats_left",
         "description": (
@@ -52,8 +154,11 @@ def seats_left(flight_no: str, date: str) -> Dict[str, Any]:
     return {"error": f"No flight {flight_no} on {date} in flights.csv. Ask the customer to confirm the flight number and date, or give their PNR."}
 
 
-LOCAL_TOOLS: Dict[str, Any] = {"seats_left": seats_left}   # ✏️ Build 2, step 2.1: the functions behind them
-
+LOCAL_TOOLS: Dict[str, Any] = {          # ✏️ Build 2, step 2.1: the functions behind them
+    "seats_left": seats_left,
+    "care_entitlements": care_entitlements,
+    "reopen_stats": reopen_stats,
+}
 
 def text_of(response) -> str:
     """Given. The last non-empty text block, never content[0]."""
@@ -115,7 +220,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
 def tool_list() -> List[Dict[str, Any]]:                   # ✏️ Build 2, step 2.2
     """Given. Exactly what Claude is offered on every turn; run.py --show-tools
     prints this list."""
-    return build_tools() + EXTRA_TOOLS
+    return build_tools() + EXTRA_TOOLS + mcp_client.tools()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
