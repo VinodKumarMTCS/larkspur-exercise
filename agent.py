@@ -107,7 +107,132 @@ def what_automation_will_not_do() -> Dict[str, Any]:
     return out
 
 
+def cause_in_plain_words(cause_code: str, language: str = "en") -> Dict[str, Any]:
+    """The customer-facing wording for a cause code, straight from the policy table's
+    cause_labels_customer, the only vocabulary the agent may use for causes."""
+    from support import mock_backend
+    policy = mock_backend.load_policy()
+    labels = policy["cause_labels_customer"]
+    code = (cause_code or "").strip().upper()
+    if code not in labels:
+        return {"error": f"Unknown cause_code {cause_code!r}. Valid codes: {', '.join(labels)}."}
+    lang = language if language in labels[code] else "en"
+    return {
+        "cause_code": code,
+        "language": lang,
+        "plain_words": labels[code][lang],
+        "attribution_rule": policy["customer_wording"]["cause_attribution"],
+    }
+
+
+def departures_in_window(origin: str, dest: str, date: str,
+                         earliest: str = "00:00", latest: str = "23:59") -> Dict[str, Any]:
+    """Scheduled departures on one route and date inside a local-time window, from
+    flights.csv. Cancelled and diverted flights are listed apart, never as options."""
+    from support import mock_backend
+    flights, unavailable = [], []
+    for row in mock_backend.load_flights():
+        if row["origin"] != origin.upper() or row["dest"] != dest.upper() or row["date"] != date:
+            continue
+        if not (earliest <= row["sched_dep_local"] <= latest):
+            continue
+        entry = {"flight_no": row["flight_no"], "departs_local": row["sched_dep_local"],
+                 "arrives_local": row["sched_arr_local"], "status": row["status"],
+                 "delay_minutes": row["delay_min"],
+                 "seats_left_Y": row["seats_left_Y"], "seats_left_J": row["seats_left_J"]}
+        (unavailable if row["status"] in ("CANCELLED", "DIVERTED") else flights).append(entry)
+    flights.sort(key=lambda e: e["departs_local"])
+    return {"origin": origin.upper(), "dest": dest.upper(), "date": date,
+            "window_local": f"{earliest}-{latest}", "departures": flights,
+            "not_operating": unavailable,
+            "note": "Scheduled times; delay_minutes is added to the scheduled time. "
+                    "A listing is not a hold or a booking."}
+
+
+def hold_time_left(hold_id: str) -> Dict[str, Any]:
+    """Minutes left on a seat hold, from the holds in the mock backend and the sample
+    data's 'now'. A hold the backend does not know is reported, not invented."""
+    from support import mock_backend
+    hold = mock_backend._holds.get((hold_id or "").strip().upper())
+    if not hold:
+        return {"hold_id": hold_id, "found": False,
+                "note": "No active hold with that id. It may have expired, been confirmed, "
+                        "or never existed. Do not tell the customer a seat is still held."}
+    now = mock_backend.FIXTURE_CLOCK
+    left = int((hold["expires_at"] - now).total_seconds() // 60)
+    return {"hold_id": hold_id.strip().upper(), "found": True, "now_local": now.isoformat(),
+            "expires_at": hold["expires_at"].isoformat(), "minutes_left": max(0, left),
+            "expired": left <= 0,
+            "note": "A hold is released when it expires. Confirming needs the customer's "
+                    "own Confirm click."}
+
+
 EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
+    {
+        "name": "hold_time_left",
+        "description": (
+            "Tell the customer how many minutes remain before a seat hold is released. "
+            "Use it when the customer asks how long they have, and only after hold_seat "
+            "has returned a hold_id this conversation. It reads the hold's expiry; it "
+            "does not extend, confirm or place a hold. If the hold is unknown or has "
+            "expired it says so, and then you must not say the seat is still held."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hold_id": {"type": "string", "description": "The hold_id returned by hold_seat, e.g. HOLD-1A2B3C."},
+            },
+            "required": ["hold_id"],
+        },
+    },
+    {
+        "name": "departures_in_window",
+        "description": (
+            "List the Larkspur departures on one route and one date that leave inside a "
+            "local-time window, for example 'anything this afternoon' or 'before 9am'. "
+            "Use it when the customer names a time of day, not when they want the first "
+            "day with a seat (next_available_day) or the ranked rebooking options for "
+            "their booking (search_alternatives). Take origin and dest from the booking's "
+            "segment and the date from the customer or segment. Returns each flight's "
+            "scheduled departure and arrival, status, delay and seats left, with "
+            "cancelled or diverted flights listed separately. It holds and books "
+            "nothing, and does not say what the customer is owed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "origin": {"type": "string", "description": "Departure airport IATA code, e.g. DEN."},
+                "dest": {"type": "string", "description": "Arrival airport IATA code, e.g. AUS."},
+                "date": {"type": "string", "description": "Local date in ISO format YYYY-MM-DD, e.g. 2025-05-08."},
+                "earliest": {"type": "string", "description": "Optional. Earliest departure, 24-hour local HH:MM, e.g. 12:00. Defaults to 00:00."},
+                "latest": {"type": "string", "description": "Optional. Latest departure, 24-hour local HH:MM, e.g. 18:00. Defaults to 23:59."},
+            },
+            "required": ["origin", "dest", "date"],
+        },
+    },
+    {
+        "name": "cause_in_plain_words",
+        "description": (
+            "Turn a disruption cause code (WX, ATC, MX, CREW, SEC) into the approved "
+            "customer-facing wording, for example WX becomes 'weather'. Call it whenever "
+            "you are about to tell the customer why their flight was disrupted, using the "
+            "cause_code from get_flight_status, and say the returned plain_words rather "
+            "than the code or your own phrasing. Pass the customer's language (en or es) "
+            "from lookup_booking. It returns the wording and the attribution rule: name "
+            "the cause, never assign blame. It says nothing about what the customer is "
+            "owed; that is check_policy."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cause_code": {"type": "string", "enum": ["WX", "ATC", "MX", "CREW", "SEC"],
+                               "description": "Cause from get_flight_status."},
+                "language": {"type": "string", "enum": ["en", "es"],
+                             "description": "Customer's language from lookup_booking. Defaults to en."},
+            },
+            "required": ["cause_code"],
+        },
+    },
     {
         "name": "care_entitlements",
         "description": (
@@ -326,6 +451,8 @@ LOCAL_TOOLS: Dict[str, Any] = {          # ✏️ Build 2, step 2.1: the functio
     "seats_left": seats_left,
     "ground_stop_status": ground_stop_status,
     "hold_time_left": hold_time_left,
+    "departures_in_window": departures_in_window,
+    "cause_in_plain_words": cause_in_plain_words,
     "care_entitlements": care_entitlements,
     "reopen_stats": reopen_stats,
     "what_automation_will_not_do": what_automation_will_not_do,
