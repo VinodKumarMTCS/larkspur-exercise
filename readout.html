@@ -38,11 +38,11 @@ th { background: #f4eee4; font-size: 12px; letter-spacing: .05em; text-transform
 .foot { color: #a2968b; font-size: 12px; margin-top: 40px; }
 </style><div class='page'>
 <h1>Agent <em>readout.</em></h1>
-<p class='sub'>Team Room 12 · 2026-11-26 08:18</p>
+<p class='sub'>Team Room 12 · 2026-11-26 12:10</p>
 <h2>Architecture: what the agent is</h2>
 <div class='strip'>
-<div class='stat'><b>14</b><span>tools offered</span></div>
-<div class='stat'><b>3</b><span>beyond the given 9</span></div>
+<div class='stat'><b>19</b><span>tools offered</span></div>
+<div class='stat'><b>8</b><span>beyond the given 9</span></div>
 <div class='stat'><b>2</b><span>served over MCP</span></div>
 <div class='stat'><b>8</b><span>loop ceiling</span></div>
 <div class='stat'><b>1478</b><span>system prompt chars</span></div>
@@ -58,49 +58,70 @@ th { background: #f4eee4; font-size: 12px; letter-spacing: .05em; text-transform
 <tr><td><span class='pill'>issue_voucher</span></td><td>Issue a meal, ground, hotel, or goodwill voucher. Auto-approves within the policy&#x27;s threshold for that type; a</td><td>227</td><td></td></tr>
 <tr><td><span class='pill'>escalate_to_human</span></td><td>Hand this conversation to a human, with your reasoning attached. Use for groups, partner segments, unaccompani</td><td>220</td><td></td></tr>
 <tr><td><span class='pill'>send_confirmation</span></td><td>Send the customer a written confirmation of what was just done. Benign.</td><td>71</td><td></td></tr>
+<tr class='yours'><td><span class='pill'>departures_in_window</span></td><td>List the Larkspur departures on one route and one date that leave inside a local-time window, for example &#x27;any</td><td>635</td><td><span class='pill you'>yours</span></td></tr>
+<tr class='yours'><td><span class='pill'>cause_in_plain_words</span></td><td>Turn a disruption cause code (WX, ATC, MX, CREW, SEC) into the approved customer-facing wording, for example W</td><td>552</td><td><span class='pill you'>yours</span></td></tr>
 <tr class='yours'><td><span class='pill'>care_entitlements</span></td><td>Answer only the care question: what meal, hotel and ground-transport help is this customer owed while they wai</td><td>568</td><td><span class='pill you'>yours</span></td></tr>
 <tr class='yours'><td><span class='pill'>reopen_stats</span></td><td>Report how often human-handled disruption chats were reopened by the customer within 72 hours, and the recorde</td><td>578</td><td><span class='pill you'>yours</span></td></tr>
 <tr class='yours'><td><span class='pill'>seats_left</span></td><td>Find the remaining free seats on a flight, per cabin (economy Y and business J). Use it when the customer asks</td><td>539</td><td><span class='pill you'>yours</span></td></tr>
+<tr class='yours'><td><span class='pill'>what_automation_will_not_do</span></td><td>Tell the customer what this chat assistant is not allowed to do itself. Use it when the customer asks the chat</td><td>709</td><td><span class='pill you'>yours</span></td></tr>
+<tr class='yours'><td><span class='pill'>ground_stop_status</span></td><td>Check whether an airport has a ground stop (flights grounded or held) recorded in flights.csv, and if the reco</td><td>586</td><td><span class='pill you'>yours</span></td></tr>
+<tr class='yours'><td><span class='pill'>hold_time_left</span></td><td>Say how long a seat hold made by hold_seat is still valid before the seat is released: minutes and seconds lef</td><td>555</td><td><span class='pill you'>yours</span></td></tr>
 <tr class='yours'><td><span class='pill'>next_available_day</span></td><td>Answer the first question a cancelled or stranded Larkspur customer asks: what is the soonest day you can actu</td><td>628</td><td><span class='pill you'>via mcp</span></td></tr>
 <tr class='yours'><td><span class='pill'>fare_rules</span></td><td>Return the Larkspur Customer Commitment and fare rules text behind an entitlement decision, straight from the </td><td>578</td><td><span class='pill you'>via mcp</span></td></tr>
 </table>
-<p class='sub'>2 of those 14 tools are served by support/mcp_server.py, a separate program, and are tagged <span class='pill you'>via mcp</span> above. Claude cannot tell: same name, same description, same tokens.</p>
-<p class='sub'>local dispatch: <span class='pill you'>care_entitlements</span>, <span class='pill you'>reopen_stats</span>, <span class='pill you'>seats_left</span></p>
+<p class='sub'>2 of those 19 tools are served by support/mcp_server.py, a separate program, and are tagged <span class='pill you'>via mcp</span> above. Claude cannot tell: same name, same description, same tokens.</p>
+<p class='sub'>local dispatch: <span class='pill you'>care_entitlements</span>, <span class='pill you'>cause_in_plain_words</span>, <span class='pill you'>departures_in_window</span>, <span class='pill you'>ground_stop_status</span>, <span class='pill you'>hold_time_left</span>, <span class='pill you'>reopen_stats</span>, <span class='pill you'>seats_left</span>, <span class='pill you'>what_automation_will_not_do</span></p>
+<h2>All five ticket types: what it did across the set</h2>
+<p class='sub'>python3 run.py --all · 2026-11-26T12:08:08</p>
+<div class='strip'>
+<div class='stat'><b>5/5</b><span>returned text</span></div>
+<div class='stat'><b>22</b><span>API turns, total</span></div>
+<div class='stat'><b>22</b><span>tool calls, total</span></div>
+<div class='stat'><b>20,249</b><span>tokens in, total</span></div>
+<div class='stat'><b>4,792</b><span>tokens out, total</span></div>
+</div>
+<table><tr><th>pnr</th><th>ticket type</th><th>turns</th><th>tools</th><th>in</th><th>out</th><th>stop_reason</th></tr>
+<tr><td><span class='pill'>K7PQ2M</span></td><td>Clean cancellation</td><td>5</td><td>5</td><td>5,834</td><td>878</td><td>end_turn</td></tr>
+<tr><td><span class='pill'>M3XR8T</span></td><td>Delay under threshold</td><td>4</td><td>4</td><td>2,972</td><td>792</td><td>end_turn</td></tr>
+<tr><td><span class='pill'>T9WN4C</span></td><td>Ambiguous missed connection</td><td>4</td><td>4</td><td>2,920</td><td>874</td><td>end_turn</td></tr>
+<tr><td><span class='pill'>G2HL9V</span></td><td>Out-of-scope group</td><td>5</td><td>5</td><td>5,565</td><td>1,351</td><td>end_turn</td></tr>
+<tr><td><span class='pill'>R8KD3F</span></td><td>Abusive message</td><td>4</td><td>4</td><td>2,958</td><td>897</td><td>end_turn</td></tr>
+</table>
 <h2>The loop: one conversation, turn by turn</h2>
-<p class='sub'>Trace shown: one conversation, the last one you ran · trace: .workshop\last_trace.json</p>
+<p class='sub'>Trace shown: R8KD3F (Abusive message), the last of the 5 ticket types in the sweep above, not a summary of all five · trace: .workshop\last_trace.json</p>
 <div class='strip'>
 <div class='stat'><b>4</b><span>API turns</span></div>
 <div class='stat'><b>4</b><span>tool calls</span></div>
-<div class='stat'><b>19,734</b><span>tokens in</span></div>
-<div class='stat'><b>919</b><span>tokens out</span></div>
-<div class='stat'><b>13.2s</b><span>wall clock</span></div>
+<div class='stat'><b>2,958</b><span>tokens in</span></div>
+<div class='stat'><b>897</b><span>tokens out</span></div>
+<div class='stat'><b>9.9s</b><span>wall clock</span></div>
 </div>
 <div class='turn'>
 <div class='hd'>Turn 1 → messages.create()</div>
-<div class='meta'>sent: 1 msg in context · 13 tools offered</div>
-<div class='meta'>← stop_reason=<b>tool_use</b> · blocks: tool_use · in 4,250 / out 85 · 1.6s</div>
-<div class='tool'>⚙ lookup_booking({&quot;pnr&quot;: &quot;K7PQ2M&quot;, &quot;last_name&quot;: &quot;Marchetti&quot;})</div>
+<div class='meta'>sent: 1 msg in context · 19 tools offered</div>
+<div class='meta'>← stop_reason=<b>tool_use</b> · blocks: tool_use · in 114 / out 83 · 1.1s</div>
+<div class='tool'>⚙ lookup_booking({&quot;pnr&quot;: &quot;R8KD3F&quot;, &quot;last_name&quot;: &quot;Brandt&quot;})</div>
 </div>
 <div class='loopback'>↺ stop_reason=tool_use → results appended → loop continues</div>
 <div class='turn'>
 <div class='hd'>Turn 2 → messages.create()</div>
-<div class='meta'>sent: 3 msg in context · 13 tools offered</div>
-<div class='meta'>← stop_reason=<b>tool_use</b> · blocks: tool_use · in 4,572 / out 81 · 1.2s</div>
-<div class='tool'>⚙ get_flight_status({&quot;flight_no&quot;: &quot;LK415&quot;, &quot;date&quot;: &quot;2025-05-08&quot;})</div>
+<div class='meta'>sent: 3 msg in context · 19 tools offered</div>
+<div class='meta'>← stop_reason=<b>tool_use</b> · blocks: tool_use · in 428 / out 81 · 1.4s</div>
+<div class='tool'>⚙ get_flight_status({&quot;flight_no&quot;: &quot;LK255&quot;, &quot;date&quot;: &quot;2025-05-08&quot;})</div>
 </div>
 <div class='loopback'>↺ stop_reason=tool_use → results appended → loop continues</div>
 <div class='turn'>
 <div class='hd'>Turn 3 → messages.create()</div>
-<div class='meta'>sent: 5 msg in context · 13 tools offered</div>
-<div class='meta'>← stop_reason=<b>tool_use</b> · blocks: thinking, tool_use, tool_use · in 4,890 / out 287 · 2.0s</div>
-<div class='tool'>⚙ check_policy({&quot;pnr&quot;: &quot;K7PQ2M&quot;, &quot;cause_code&quot;: &quot;WX&quot;, &quot;delay_minutes&quot;: 0, &quot;status&quot;: &quot;CANCELLED&quot;})</div>
-<div class='tool'>⚙ care_entitlements({&quot;pnr&quot;: &quot;K7PQ2M&quot;, &quot;cause_code&quot;: &quot;WX&quot;, &quot;delay_minutes&quot;: 0, &quot;status&quot;: &quot;CANCELLED&quot;})</div>
+<div class='meta'>sent: 5 msg in context · 19 tools offered</div>
+<div class='meta'>← stop_reason=<b>tool_use</b> · blocks: tool_use, tool_use · in 752 / out 206 · 2.4s</div>
+<div class='tool'>⚙ check_policy({&quot;pnr&quot;: &quot;R8KD3F&quot;, &quot;cause_code&quot;: &quot;WX&quot;, &quot;delay_minutes&quot;: 190, &quot;status&quot;: &quot;DELAYED&quot;})</div>
+<div class='tool'>⚙ cause_in_plain_words({&quot;cause_code&quot;: &quot;WX&quot;, &quot;language&quot;: &quot;en&quot;})</div>
 </div>
 <div class='loopback'>↺ stop_reason=tool_use → results appended → loop continues</div>
 <div class='turn done'>
 <div class='hd'>Turn 4 → messages.create()</div>
-<div class='meta'>sent: 7 msg in context · 13 tools offered</div>
-<div class='meta'>← stop_reason=<b class='stopped'>end_turn</b> · blocks: thinking, text · in 6,022 / out 466 · 4.5s</div>
+<div class='meta'>sent: 7 msg in context · 19 tools offered</div>
+<div class='meta'>← stop_reason=<b class='stopped'>end_turn</b> · blocks: thinking, text · in 1,664 / out 527 · 4.7s</div>
 </div>
 <p class='foot'>Generated by readout.py · Larkspur Airlines is a fictional training scenario · Confidential / do not distribute</p></div>
-<script type="application/json" id="evidence">{"generated": "2026-11-26T08:18:36", "pod": "Room 12", "banked_by": "Vinod Kumar", "banked": {"2.2": "2D1-06E", "2.1": "120-A2D"}, "trace": {"turns": 4, "tool_calls": 4, "tool_names": ["lookup_booking", "get_flight_status", "check_policy", "care_entitlements"], "saw_thinking": true, "used_format": false, "used_tool_choice_none": false, "streamed": false, "deltas_seen": 0, "tokens": {"input": 19734, "output": 919, "cache_read": 0, "cache_write": 0}, "cache_hit_ratio": null, "elapsed": 13.2}, "all_shapes": null}</script>
+<script type="application/json" id="evidence">{"generated": "2026-11-26T12:10:42", "pod": "Room 12", "banked_by": "Apurva Berthwal", "banked": {"1.2": "38F-A40", "1.3": "C9B-C83", "1.4": "85A-C80", "2.1": "79C-390", "2.2": "114-80D", "3.1": "702-AD4", "4.1": "30E-C0E"}, "trace": {"turns": 4, "tool_calls": 4, "tool_names": ["lookup_booking", "get_flight_status", "check_policy", "cause_in_plain_words"], "saw_thinking": true, "used_format": false, "used_tool_choice_none": false, "streamed": false, "deltas_seen": 0, "tokens": {"input": 2958, "output": 897, "cache_read": 22852, "cache_write": 2168}, "cache_hit_ratio": 0.8167846164843806, "elapsed": 9.9}, "all_shapes": {"attempted": 5, "shapes": 5, "failed": 0, "resolved": 5, "turns": 22, "tool_calls": 22, "tokens_in": 20249, "tokens_out": 4792, "cache_read": 119973, "unfinished": [], "errors": []}}</script>
