@@ -69,6 +69,44 @@ def care_entitlements(pnr: str, cause_code: str, delay_minutes: int, status: str
     }
 
 
+HANDBOOK_PATH = Path(__file__).parent / "data" / "americas" / "fare_rules_excerpt.md"
+
+
+def what_automation_will_not_do() -> Dict[str, Any]:
+    """Handbook section 7, read from fare_rules_excerpt.md: what the chat is not
+    allowed to do. Answers only from that file; if the section is missing it says
+    so rather than listing limits from memory."""
+    try:
+        lines = HANDBOOK_PATH.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        return {"error": "Cannot read the Handbook excerpt (%s). Do not state what the chat "
+                         "may or may not do; use escalate_to_human." % exc}
+    body, inside = [], False
+    for line in lines:
+        if line.startswith("### "):
+            if inside:
+                break
+            inside = line[4:].lstrip().startswith("7.")
+            continue
+        if inside and line.strip():
+            body.append(line.strip())
+    text = " ".join(body)
+    if not text:
+        return {"error": "Section 7 was not found in the Handbook excerpt. Do not state what the "
+                         "chat may or may not do; use escalate_to_human."}
+    out: Dict[str, Any] = {"handbook_section": "7. What chat automation will not do",
+                           "text": text, "source": HANDBOOK_PATH.name}
+    head, found, rest = text.partition(" are handled by people")
+    if found:
+        items = [i.strip() for i in head.split(",")]
+        out["handled_by_people"] = [i[4:] if i.startswith("and ") else i for i in items]
+        out["what_the_assistant_does_instead"] = rest.lstrip(". ").strip()
+    out["note"] = ("Compare the customer's request with handled_by_people. Section 7 is the "
+                   "only source: do not add limits it does not name, and do not offer to do "
+                   "anything on the list.")
+    return out
+
+
 EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
     {
         "name": "care_entitlements",
@@ -141,6 +179,22 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for
             "required": ["flight_no", "date"],
         },
     },
+    {
+        "name": "what_automation_will_not_do",
+        "description": (
+            "Tell the customer what this chat assistant is not allowed to do itself. Use "
+            "it when the customer asks the chat to do something that may be outside its "
+            "remit, for example cancel the whole trip, refund the ticket, collect a fare "
+            "difference, approve a hotel, rebook on another airline, handle a large group "
+            "or an unaccompanied minor, or trace a bag. Needs no booking details. Returns "
+            "Handbook section 7: the list of things only people handle, and what the "
+            "assistant does instead (explain, hold a seat for 15 minutes, hand over with a "
+            "summary). It does not decide what the customer is owed (check_policy), explain "
+            "why a fare rule applies (fare_rules) or hand the case over (escalate_to_human); "
+            "use those after it."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
 ]
 
 
@@ -158,6 +212,7 @@ LOCAL_TOOLS: Dict[str, Any] = {          # ✏️ Build 2, step 2.1: the functio
     "seats_left": seats_left,
     "care_entitlements": care_entitlements,
     "reopen_stats": reopen_stats,
+    "what_automation_will_not_do": what_automation_will_not_do,
 }
 
 def text_of(response) -> str:
