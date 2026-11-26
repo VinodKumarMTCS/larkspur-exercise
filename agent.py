@@ -149,42 +149,6 @@ def departures_in_window(origin: str, dest: str, date: str,
                     "A listing is not a hold or a booking."}
 
 
-def ground_stop_status(airport: str) -> Dict[str, Any]:
-    """Is an airport under a ground stop right now, and until when? Reads only the
-    flights.csv remarks and the sample data's 'now'. Names an end time only when a
-    remark gives one; otherwise it says there is none rather than guessing."""
-    import re
-    from support import mock_backend
-    code = (airport or "").strip().upper()
-    now = mock_backend.FIXTURE_CLOCK
-    evidence, window = [], None
-    for row in mock_backend.load_flights():
-        remark = row.get("remarks") or ""
-        if not re.search(rf"\b{re.escape(code)}\b[^;)]*ground stop|ground stop[^;)]*\b{re.escape(code)}\b",
-                         remark, re.I):
-            continue
-        evidence.append({"flight_no": row["flight_no"], "status": row["status"], "remark": remark})
-        m = re.search(r"ground stop (\d{2}:\d{2})-(\d{2}:\d{2})", remark)
-        if m and window is None:
-            window = (m.group(1), m.group(2))
-    if not evidence:
-        return {"airport": code, "now_local": now.isoformat(), "ground_stop": False,
-                "note": f"No ground stop at {code} appears in the flight data."}
-    out: Dict[str, Any] = {"airport": code, "now_local": now.isoformat(), "ground_stop": True,
-                           "reported_on_flights": evidence}
-    if window:
-        end = now.replace(hour=int(window[1][:2]), minute=int(window[1][3:]), second=0, microsecond=0)
-        start = now.replace(hour=int(window[0][:2]), minute=int(window[0][3:]), second=0, microsecond=0)
-        in_effect = start <= now < end
-        out.update({"window_local": f"{window[0]}-{window[1]}", "in_effect_now": in_effect,
-                    "minutes_until_scheduled_end": max(0, int((end - now).total_seconds() // 60))})
-        out["note"] = ("The end time is the ground stop's reported window. Say it may change; "
-                       "do not promise when flights will resume.")
-    else:
-        out["note"] = "The data gives no end time for this ground stop. Say so; do not guess one."
-    return out
-
-
 def hold_time_left(hold_id: str) -> Dict[str, Any]:
     """Minutes left on a seat hold, from the holds in the mock backend and the sample
     data's 'now'. A hold the backend does not know is reported, not invented."""
@@ -204,25 +168,6 @@ def hold_time_left(hold_id: str) -> Dict[str, Any]:
 
 
 EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
-    {
-        "name": "ground_stop_status",
-        "description": (
-            "Say whether an airport is under a ground stop right now and when it is "
-            "scheduled to end, for a customer asking 'is Denver still stopped, and until "
-            "when?'. Use it for questions about an airport-wide stop; use "
-            "get_flight_status for one flight's own status. Needs only the airport "
-            "code. Returns whether a stop is reported, its window and the minutes until "
-            "the scheduled end, taken from the flight remarks. If the data gives no end "
-            "time it says so. Never promise when flights will resume."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "airport": {"type": "string", "description": "Airport IATA code, e.g. DEN. Use the disrupted flight's origin from the booking."},
-            },
-            "required": ["airport"],
-        },
-    },
     {
         "name": "hold_time_left",
         "description": (
@@ -375,7 +320,72 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "ground_stop_status",
+        "description": (
+            "Check whether an airport has a ground stop (flights grounded or held) "
+            "recorded in flights.csv, and if the record states times, whether the stop "
+            "is before, inside or past its window at a given moment. Use it only when "
+            "the customer asks whether an airport is stopped or grounded, or until "
+            "when, including 'until 15:50?' style questions; never for one flight's "
+            "delay status or for seats. Times come only from the record: if none are "
+            "stated the tool says so, and you must not guess an end time. Pass "
+            "query_time when the customer names a date or time; leave it out to use "
+            "the current moment."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "airport": {"type": "string", "description": "Three-letter airport code, e.g. DEN. Convert a city name like Denver to its code."},
+                "query_time": {"type": "string", "description": "Optional. The moment to check, in the airport's local time, as 'YYYY-MM-DD HH:MM', e.g. '2025-05-08 15:30'. Omit to use now."},
+            },
+            "required": ["airport"],
+        },
+    },
 ]
+
+
+def ground_stop_status(airport: str, query_time: str = "") -> Dict[str, Any]:
+    """Ground-stop records for one airport from flights.csv remarks. Times only
+    when the remark states them; compared against query_time or the fixture clock."""
+    import re
+    from datetime import datetime
+    from support import mock_backend
+    ap = airport.strip().upper()
+    if query_time:
+        try:
+            now = datetime.strptime(query_time.strip(), "%Y-%m-%d %H:%M")
+        except ValueError:
+            return {"error": "query_time must be 'YYYY-MM-DD HH:MM' in airport local time."}
+    else:
+        now = mock_backend.FIXTURE_CLOCK.replace(tzinfo=None)
+    stop = re.compile(rf"\b{re.escape(ap)}\s+(?:GDP then\s+)?ground stop", re.I)
+    win = re.compile(r"ground stop (\d{2}:\d{2})-(\d{2}:\d{2})(?: ([A-Z]{3}))?")
+    windows, flights = {}, []
+    for row in mock_backend.load_flights():
+        remark = row.get("remarks") or ""
+        if not stop.search(remark):
+            continue
+        flights.append(row["flight_no"])
+        m = win.search(remark)
+        if m:
+            windows[(row["date"], m.group(1), m.group(2), m.group(3) or "local")] = True
+    if not flights:
+        return {"airport": ap, "ground_stop_recorded": False,
+                "note": f"flights.csv has no ground-stop remark for {ap}. No timings are stated."}
+    out = {"airport": ap, "ground_stop_recorded": True, "flights_with_remark": flights,
+           "checked_at": now.strftime("%Y-%m-%d %H:%M")}
+    if not windows:
+        out["note"] = "A ground stop is recorded but flights.csv states no times. Do not give an end time."
+        return out
+    results = []
+    for (date, start, end, tz) in windows:
+        s = datetime.strptime(f"{date} {start}", "%Y-%m-%d %H:%M")
+        e = datetime.strptime(f"{date} {end}", "%Y-%m-%d %H:%M")
+        state = "not_started" if now < s else ("active" if now <= e else "ended")
+        results.append({"date": date, "start": start, "end": end, "timezone": tz, "state_at_checked_time": state})
+    out["windows"] = results
+    return out
 
 
 def seats_left(flight_no: str, date: str) -> Dict[str, Any]:
