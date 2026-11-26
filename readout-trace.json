@@ -7,17 +7,17 @@
     "check_policy",
     "cause_in_plain_words"
   ],
-  "saw_thinking": true,
+  "saw_thinking": false,
   "used_format": false,
   "used_tool_choice_none": false,
   "streamed": false,
   "deltas_seen": 0,
   "tokens": {
-    "input": 2958,
-    "output": 897,
+    "input": 2962,
+    "output": 654,
     "cache_read": 22852,
-    "cache_write": 2168
+    "cache_write": 2228
   },
-  "cache_hit_ratio": 0.8167846164843806,
-  "elapsed": 9.9
+  "cache_hit_ratio": 0.8149204764282149,
+  "elapsed": 8.2
 }
