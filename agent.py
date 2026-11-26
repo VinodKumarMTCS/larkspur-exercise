@@ -217,7 +217,56 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for
             "required": ["airport"],
         },
     },
+    {
+        "name": "hold_time_left",
+        "description": (
+            "Say how long a seat hold made by hold_seat is still valid before the seat "
+            "is released: minutes and seconds left, or that it has expired. Use it only "
+            "when the customer asks how long they have, or when a held seat expires. "
+            "Call lookup_booking first, with the customer's PNR, or with the flight "
+            "number and date if they have no PNR, then use the hold_id that hold_seat "
+            "returned for that booking. If no hold exists yet, tell the customer and "
+            "offer to place one; never create or extend a hold from this tool, and "
+            "never promise a seat after the hold has expired."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hold_id": {"type": "string", "description": "The hold_id returned by hold_seat, e.g. HOLD-3FA2C1."},
+                "query_time": {"type": "string", "description": "Optional. The moment to check, in Denver local time, as 'YYYY-MM-DD HH:MM'. Omit to use now."},
+            },
+            "required": ["hold_id"],
+        },
+    },
 ]
+
+
+def hold_time_left(hold_id: str, query_time: str = "") -> Dict[str, Any]:
+    """Time left on one seat hold. Read-only: the expiry rule matches
+    confirm_rebooking (expired once now is past expires_at)."""
+    from datetime import datetime
+    from support import mock_backend
+    hold = mock_backend._holds.get(hold_id.strip().upper())
+    if not hold:
+        return {"hold_id": hold_id, "found": False,
+                "note": "No hold with this id. Tell the customer and offer to place one; do not place it without their go-ahead."}
+    if query_time:
+        try:
+            now = datetime.strptime(query_time.strip(), "%Y-%m-%d %H:%M").replace(
+                tzinfo=mock_backend.FIXTURE_CLOCK.tzinfo)
+        except ValueError:
+            return {"error": "query_time must be 'YYYY-MM-DD HH:MM' in Denver local time."}
+    else:
+        now = mock_backend.FIXTURE_CLOCK
+    expires = hold["expires_at"]
+    out = {"hold_id": hold_id.strip().upper(), "found": True, "pnr": hold["pnr"],
+           "option_id": hold["option_id"], "expires_at": expires.strftime("%Y-%m-%d %H:%M")}
+    if now > expires:
+        out.update(state="expired", note="The hold has expired; the seat may no longer be available.")
+    else:
+        secs = int((expires - now).total_seconds())
+        out.update(state="active", minutes_left=secs // 60, seconds_left=secs % 60)
+    return out
 
 
 def ground_stop_status(airport: str, query_time: str = "") -> Dict[str, Any]:
@@ -276,6 +325,7 @@ def seats_left(flight_no: str, date: str) -> Dict[str, Any]:
 LOCAL_TOOLS: Dict[str, Any] = {          # ✏️ Build 2, step 2.1: the functions behind them
     "seats_left": seats_left,
     "ground_stop_status": ground_stop_status,
+    "hold_time_left": hold_time_left,
     "care_entitlements": care_entitlements,
     "reopen_stats": reopen_stats,
     "what_automation_will_not_do": what_automation_will_not_do,
