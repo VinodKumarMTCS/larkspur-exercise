@@ -17,8 +17,42 @@ from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
 MAX_TOOL_CALLS = 8  # Larkspur's own build capped the loop here; then a human takes over.
 
 TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
-EXTRA_TOOLS: List[Dict[str, Any]] = []   # ✏️ Build 2, step 2.1: schemas for the tools you add
-LOCAL_TOOLS: Dict[str, Any] = {}         # ✏️ Build 2, step 2.1: the functions behind them
+EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
+    {
+        "name": "seats_left",
+        "description": (
+            "Find the remaining free seats on a flight, per cabin (economy Y and "
+            "business J). Use it when the customer asks about remaining seats, room "
+            "for their party, or seats left, never for booking or delay status. "
+            "If the customer gave a PNR, call lookup_booking first and take "
+            "flight_number and date from its segment. If they gave no PNR but did "
+            "give a flight number and date, call get_flight_status first to confirm "
+            "the flight exists. If you have neither a PNR nor a flight number and "
+            "date, ask the customer for their PNR before calling anything."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "flight_no": {"type": "string", "description": "Flight number, e.g. LK101. From lookup_booking's segment or the customer."},
+                "date": {"type": "string", "description": "Local flight date in ISO format YYYY-MM-DD, e.g. 2025-05-07."},
+            },
+            "required": ["flight_no", "date"],
+        },
+    },
+]
+
+
+def seats_left(flight_no: str, date: str) -> Dict[str, Any]:
+    """Free seats per cabin for one flight, read from flights.csv."""
+    from support import mock_backend
+    for row in mock_backend.load_flights():
+        if row["flight_no"] == flight_no and row["date"] == date:
+            return {"flight_no": flight_no, "date": date,
+                    "seats_left_Y": row["seats_left_Y"], "seats_left_J": row["seats_left_J"]}
+    return {"error": f"No flight {flight_no} on {date} in flights.csv. Ask the customer to confirm the flight number and date, or give their PNR."}
+
+
+LOCAL_TOOLS: Dict[str, Any] = {"seats_left": seats_left}   # ✏️ Build 2, step 2.1: the functions behind them
 
 
 def text_of(response) -> str:
