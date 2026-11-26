@@ -149,42 +149,7 @@ def departures_in_window(origin: str, dest: str, date: str,
                     "A listing is not a hold or a booking."}
 
 
-def hold_time_left(hold_id: str) -> Dict[str, Any]:
-    """Minutes left on a seat hold, from the holds in the mock backend and the sample
-    data's 'now'. A hold the backend does not know is reported, not invented."""
-    from support import mock_backend
-    hold = mock_backend._holds.get((hold_id or "").strip().upper())
-    if not hold:
-        return {"hold_id": hold_id, "found": False,
-                "note": "No active hold with that id. It may have expired, been confirmed, "
-                        "or never existed. Do not tell the customer a seat is still held."}
-    now = mock_backend.FIXTURE_CLOCK
-    left = int((hold["expires_at"] - now).total_seconds() // 60)
-    return {"hold_id": hold_id.strip().upper(), "found": True, "now_local": now.isoformat(),
-            "expires_at": hold["expires_at"].isoformat(), "minutes_left": max(0, left),
-            "expired": left <= 0,
-            "note": "A hold is released when it expires. Confirming needs the customer's "
-                    "own Confirm click."}
-
-
 EXTRA_TOOLS: List[Dict[str, Any]] = [    # ✏️ Build 2, step 2.1: schemas for the tools you add
-    {
-        "name": "hold_time_left",
-        "description": (
-            "Tell the customer how many minutes remain before a seat hold is released. "
-            "Use it when the customer asks how long they have, and only after hold_seat "
-            "has returned a hold_id this conversation. It reads the hold's expiry; it "
-            "does not extend, confirm or place a hold. If the hold is unknown or has "
-            "expired it says so, and then you must not say the seat is still held."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "hold_id": {"type": "string", "description": "The hold_id returned by hold_seat, e.g. HOLD-1A2B3C."},
-            },
-            "required": ["hold_id"],
-        },
-    },
     {
         "name": "departures_in_window",
         "description": (
